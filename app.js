@@ -536,9 +536,10 @@ function parseVendasSheet(rows){
     const conf = normConf(row[8]);
     if(!VALID_CONF.some(v=>conf.startsWith(v))) continue;
     if(cod===undefined||cod===null||cod===''||!item||!ano||!mes) continue;
+    const valor = (typeof row[6]==='number') ? row[6] : 0;
+    if(!valor || valor<=0) continue; // item com valor zerado = não conseguimos importar (NOK) — não conta como compra
     const cid = String(toIntOrNull(cod));
     const mesN = MES_NUM[mes] || 0;
-    const valor = (typeof row[6]==='number') ? row[6] : 0;
     (vendas[cid] = vendas[cid] || []).push({
       ano, mes: MES_CAP[mesN]||mes, sort_key: ano*100+mesN,
       item: normStr(item), valor, marca: normStr(row[4]), vendedora: normStr(row[9]), categoria: normStr(row[10])
