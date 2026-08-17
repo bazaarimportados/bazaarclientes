@@ -268,6 +268,67 @@ function renderDadosTab(c){
   `;
 }
 
+function extractSize(itemText){
+  const m = itemText.match(/tam\.?\s*([A-Za0-9]+(?:\/[A-Za0-9]+)?)/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
+function computePurchaseProfile(c){
+  const allItems = [];
+  (c.historico_meses||[]).forEach(m=> m.it.forEach(p=> allItems.push(p)));
+
+  // itens recomprados (mesmo nome aparecendo 2+ vezes)
+  const itemCount = {};
+  allItems.forEach(p=>{
+    const key = p.i;
+    if(!itemCount[key]) itemCount[key] = {nome:p.i, count:0, total:0};
+    itemCount[key].count++;
+    itemCount[key].total += p.v;
+  });
+  const recomprados = Object.values(itemCount).filter(x=>x.count>1).sort((a,b)=>b.count-a.count);
+
+  // categoria mais comprada
+  const catCount = {};
+  allItems.forEach(p=>{ if(p.cat){ catCount[p.cat] = (catCount[p.cat]||0)+1; } });
+  const catTop = Object.entries(catCount).sort((a,b)=>b[1]-a[1])[0];
+
+  // tamanho mais comprado
+  const sizeCount = {};
+  allItems.forEach(p=>{
+    const s = extractSize(p.i);
+    if(s){ sizeCount[s] = (sizeCount[s]||0)+1; }
+  });
+  const sizeTop = Object.entries(sizeCount).sort((a,b)=>b[1]-a[1])[0];
+
+  return { recomprados, catTop, sizeTop, totalItens: allItems.length };
+}
+
+function renderPerfilCompra(c){
+  const p = computePurchaseProfile(c);
+  if(p.totalItens===0) return '';
+  return `
+    <div class="section-title">Perfil de Compra</div>
+    <div class="field-grid" style="margin-bottom:18px;">
+      ${field('Categoria que mais compra', p.catTop ? `${p.catTop[0]} (${p.catTop[1]}x)` : '')}
+      ${field('Tamanho que mais compra', p.sizeTop ? `${p.sizeTop[0]} (${p.sizeTop[1]}x)` : '')}
+    </div>
+    ${p.recomprados.length ? `
+      <div style="margin-bottom:18px;">
+        <label style="display:block; font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color: var(--ink-faint); font-weight:700; margin-bottom:8px;">Itens que recomprou</label>
+        ${p.recomprados.map(r=>`
+          <div class="purchase-item">
+            <div class="pi-left">
+              <div class="pi-name">${r.nome}</div>
+              <div class="pi-meta"><span>Comprou ${r.count}x</span></div>
+            </div>
+            <div class="pi-value">${money(r.total)}</div>
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+  `;
+}
+
 function renderHistoricoTab(c){
   const el = document.getElementById('tab-historico');
   if(!c.qtd_compras){
@@ -284,6 +345,7 @@ function renderHistoricoTab(c){
       <div class="sum-card"><b>${c.qtd_compras}</b><span>Itens comprados</span></div>
       <div class="sum-card"><b>${c.ultima_compra || '—'}</b><span>Compra mais recente</span></div>
     </div>
+    ${renderPerfilCompra(c)}
     ${meses.map((m,idx)=>`
       <div class="month-accordion">
         <div class="month-header" data-idx="${idx}">
