@@ -788,13 +788,13 @@ async function renderRelatorioBody(){
   const tabsEl = document.getElementById('rel-vend-tabs');
   tabsEl.innerHTML = `<div class="vend-tab ${currentVendTab==='geral'?'active':''}" data-vend="geral">Geral</div>` +
     vendNames.map(n=>`<div class="vend-tab ${currentVendTab===n?'active':''}" data-vend="${n}">${n}</div>`).join('');
-  tabsEl.querySelectorAll('.vend-tab').forEach(t=>{
-    t.addEventListener('click', ()=>{
-      currentVendTab = t.dataset.vend;
-      tabsEl.querySelectorAll('.vend-tab').forEach(x=>x.classList.toggle('active', x===t));
-      renderClientRanking(report);
-    });
-  });
+  tabsEl.onclick = (e)=>{
+    const t = e.target.closest('.vend-tab');
+    if(!t || !tabsEl.contains(t)) return;
+    currentVendTab = t.dataset.vend;
+    tabsEl.querySelectorAll('.vend-tab').forEach(x=>x.classList.toggle('active', x===t));
+    renderClientRanking(report);
+  };
 
   const maxCat = report.categorias.length ? report.categorias[0][1] : 0;
   const marcasPorValor = report.marcas.slice().sort((a,b)=>b[1].valor-a[1].valor).slice(0,10);
