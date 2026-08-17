@@ -134,7 +134,11 @@ function renderGrid(){
     if(currentSaiuFilter && !c.data_saida) return false;
     if(term){
       const hay = ((c.nome||'')+' '+(c.bairro||'')+' '+(c.telefone||'')+' '+(c.email||'')+' '+(c.cpf||'')).toLowerCase();
-      if(!hay.includes(term)) return false;
+      const hayDigits = ((c.telefone||'')+' '+(c.cpf||'')).replace(/\D/g,'');
+      const termDigits = term.replace(/\D/g,'');
+      const matchesText = hay.includes(term);
+      const matchesDigits = termDigits.length>=4 && hayDigits.includes(termDigits);
+      if(!matchesText && !matchesDigits) return false;
     }
     return true;
   });
@@ -204,6 +208,7 @@ function openPanel(id){
 
   renderDadosTab(c);
   renderHistoricoTab(c);
+  renderPerfilTab(c);
   renderObsTab(c);
   document.getElementById('tab-count-hist').textContent = c.qtd_compras||0;
 
@@ -303,29 +308,33 @@ function computePurchaseProfile(c){
   return { recomprados, catTop, sizeTop, totalItens: allItems.length };
 }
 
-function renderPerfilCompra(c){
+function renderPerfilTab(c){
+  const el = document.getElementById('tab-perfil');
   const p = computePurchaseProfile(c);
-  if(p.totalItens===0) return '';
-  return `
-    <div class="section-title">Perfil de Compra</div>
-    <div class="field-grid" style="margin-bottom:18px;">
+  document.getElementById('tab-count-perfil').textContent = p.recomprados.length || '·';
+  if(p.totalItens===0){
+    el.innerHTML = `<div class="empty-tab">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/></svg>
+      <div>Sem compras suficientes pra montar um perfil ainda.</div>
+    </div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="section-title">Preferências</div>
+    <div class="field-grid" style="margin-bottom:22px;">
       ${field('Categoria que mais compra', p.catTop ? `${p.catTop[0]} (${p.catTop[1]}x)` : '')}
       ${field('Tamanho que mais compra', p.sizeTop ? `${p.sizeTop[0]} (${p.sizeTop[1]}x)` : '')}
     </div>
-    ${p.recomprados.length ? `
-      <div style="margin-bottom:18px;">
-        <label style="display:block; font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color: var(--ink-faint); font-weight:700; margin-bottom:8px;">Itens que recomprou</label>
-        ${p.recomprados.map(r=>`
-          <div class="purchase-item">
-            <div class="pi-left">
-              <div class="pi-name">${r.nome}</div>
-              <div class="pi-meta"><span>Comprou ${r.count}x</span></div>
-            </div>
-            <div class="pi-value">${money(r.total)}</div>
-          </div>
-        `).join('')}
+    <div class="section-title">Itens que recomprou</div>
+    ${p.recomprados.length ? p.recomprados.map(r=>`
+      <div class="purchase-item">
+        <div class="pi-left">
+          <div class="pi-name">${r.nome}</div>
+          <div class="pi-meta"><span>Comprou ${r.count}x</span></div>
+        </div>
+        <div class="pi-value">${money(r.total)}</div>
       </div>
-    ` : ''}
+    `).join('') : `<div class="empty-tab" style="padding:20px 10px;">Nenhum item repetido até agora.</div>`}
   `;
 }
 
@@ -345,7 +354,6 @@ function renderHistoricoTab(c){
       <div class="sum-card"><b>${c.qtd_compras}</b><span>Itens comprados</span></div>
       <div class="sum-card"><b>${c.ultima_compra || '—'}</b><span>Compra mais recente</span></div>
     </div>
-    ${renderPerfilCompra(c)}
     ${meses.map((m,idx)=>`
       <div class="month-accordion">
         <div class="month-header" data-idx="${idx}">
