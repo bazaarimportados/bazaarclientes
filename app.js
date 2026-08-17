@@ -4,7 +4,7 @@ import {
   getAuth, signInAnonymously, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, collection, doc, getDocs, setDoc, updateDoc, writeBatch
+  getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const app = initializeApp(firebaseConfig);
@@ -523,6 +523,364 @@ document.getElementById('chip-problemas').addEventListener('click', function(){
 document.getElementById('chip-saiu').addEventListener('click', function(){
   currentSaiuFilter = !currentSaiuFilter; this.classList.toggle('active'); renderGrid();
 });
+
+// =================================================================
+// NAVEGAÇÃO PRINCIPAL: Clientes / Relatório de Vendas
+// =================================================================
+let relatorioLoaded = false;
+document.querySelectorAll('.main-nav-tab').forEach(t=>{
+  t.addEventListener('click', ()=>{
+    document.querySelectorAll('.main-nav-tab').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    const view = t.dataset.view;
+    document.getElementById('view-clientes').style.display = (view==='clientes') ? 'block' : 'none';
+    document.getElementById('view-relatorio').style.display = (view==='relatorio') ? 'block' : 'none';
+    if(view==='relatorio' && !relatorioLoaded){
+      relatorioLoaded = true;
+      initRelatorio();
+    }
+  });
+});
+
+// =================================================================
+// RELATÓRIO DE VENDAS
+// =================================================================
+let PERIODOS = [];       // [{sk, l}] ordenado do mais recente pro mais antigo
+let currentPeriodo = 'all';
+let currentVendTab = 'geral';
+
+function buildPeriodos(){
+  const map = {};
+  CLIENTES.forEach(c=> (c.historico_meses||[]).forEach(m=>{ map[m.sk] = m.l; }));
+  PERIODOS = Object.entries(map).map(([sk,l])=>({sk:parseInt(sk), l})).sort((a,b)=>b.sk-a.sk);
+}
+
+function computeReport(periodoSk){
+  const catTotals = {};
+  const marcaTotals = {};
+  const productTotals = {};
+  const vendedoraTotals = {};
+  const clientRows = [];
+  let totalValor = 0, totalQtd = 0;
+
+  CLIENTES.forEach(c=>{
+    let cValor=0, cQtd=0;
+    const cCat = {}, cVend = {};
+    (c.historico_meses||[]).forEach(m=>{
+      if(periodoSk!=='all' && m.sk!==periodoSk) return;
+      m.it.forEach(p=>{
+        totalValor += p.v; totalQtd++;
+        cValor += p.v; cQtd++;
+        if(p.cat){ catTotals[p.cat] = (catTotals[p.cat]||0)+p.v; cCat[p.cat] = (cCat[p.cat]||0)+1; }
+        if(p.mc){ marcaTotals[p.mc] = marcaTotals[p.mc] || {valor:0,qtd:0}; marcaTotals[p.mc].valor += p.v; marcaTotals[p.mc].qtd++; }
+        productTotals[p.i] = productTotals[p.i] || {valor:0,qtd:0}; productTotals[p.i].valor += p.v; productTotals[p.i].qtd++;
+        if(p.vd){
+          vendedoraTotals[p.vd] = vendedoraTotals[p.vd] || {valor:0,qtd:0};
+          vendedoraTotals[p.vd].valor += p.v; vendedoraTotals[p.vd].qtd++;
+          cVend[p.vd] = (cVend[p.vd]||0)+p.v;
+        }
+      });
+    });
+    if(cQtd>0){
+      const catFavEntry = Object.entries(cCat).sort((a,b)=>b[1]-a[1])[0];
+      const vendPrincEntry = Object.entries(cVend).sort((a,b)=>b[1]-a[1])[0];
+      clientRows.push({
+        id:c.id, nome:c.nome, valor:cValor, qtd:cQtd,
+        catFav: catFavEntry ? catFavEntry[0] : '', vendPrincipal: vendPrincEntry ? vendPrincEntry[0] : '',
+        perVendedora: cVend
+      });
+    }
+  });
+
+  return {
+    totalValor, totalQtd,
+    ticketMedio: totalQtd>0 ? totalValor/totalQtd : 0,
+    clientesAtivos: clientRows.length,
+    categorias: Object.entries(catTotals).sort((a,b)=>b[1]-a[1]),
+    marcas: Object.entries(marcaTotals),
+    produtos: Object.entries(productTotals),
+    vendedoras: Object.entries(vendedoraTotals).sort((a,b)=>b[1].valor-a[1].valor),
+    clientRows
+  };
+}
+
+// Dados de dia/horário de venda — extraídos manualmente do relatório histórico.
+// Só existem pra estes meses porque não temos data completa de venda na base atual.
+const DIAS_HORARIOS_STATIC = {
+  'Junho/2026': {
+    periodoDia: [
+      {p:'TARDE', valor:87726.14, pct:0.4283143212581755},
+      {p:'MANHÃ', valor:73106.06, pct:0.3569332067814617},
+      {p:'NOITE', valor:43985.00, pct:0.2147524719603627}
+    ],
+    topDias: [
+      {data:'11/05', dia:'Seg', total:67873.5},
+      {data:'12/05', dia:'Ter', total:38546.7},
+      {data:'02/05', dia:'Sáb', total:33079.18},
+      {data:'04/05', dia:'Seg', total:30833.6},
+      {data:'13/05', dia:'Qua', total:30131.4},
+      {data:'07/05', dia:'Qui', total:25372.0},
+      {data:'01/05', dia:'Sex', total:24852.5},
+      {data:'29/04', dia:'Qua', total:23339.6},
+      {data:'06/05', dia:'Qua', total:21683.0},
+      {data:'08/05', dia:'Sex', total:20631.32}
+    ]
+  },
+  'Julho/2026': {
+    periodoDia: [
+      {p:'TARDE', valor:243396.94, pct:0.438978751610255},
+      {p:'NOITE', valor:176634.00, pct:0.318568396184134},
+      {p:'MANHÃ', valor:134430.84, pct:0.242452852205611}
+    ],
+    topDias: [
+      {data:'23/06', dia:'Ter', total:28453.9},
+      {data:'02/06', dia:'Ter', total:28302.46},
+      {data:'07/06', dia:'Dom', total:26603.9},
+      {data:'04/06', dia:'Qui', total:23933.6},
+      {data:'26/06', dia:'Sex', total:23844.9},
+      {data:'18/06', dia:'Qui', total:23685.34},
+      {data:'21/06', dia:'Dom', total:23387.42},
+      {data:'03/06', dia:'Qua', total:23015.6},
+      {data:'25/06', dia:'Qui', total:22461.6},
+      {data:'14/06', dia:'Dom', total:22379.6}
+    ]
+  }
+};
+
+function renderDiasHorariosSection(periodoLabel){
+  const data = DIAS_HORARIOS_STATIC[periodoLabel];
+  if(!data){
+    return `
+      <div class="rel-section">
+        <div class="rel-section-title">Dias e horários que mais venderam</div>
+        <div class="rel-panel"><div class="empty-tab" style="padding:14px 4px;">Sem dado de dia/horário pra esse período — essa informação só existe pra Junho e Julho de 2026 no momento.</div></div>
+      </div>`;
+  }
+  const maxDia = data.topDias[0].total;
+  return `
+    <div class="rel-section">
+      <div class="rel-section-title">Dias e horários que mais venderam</div>
+      <div class="rel-grid-2">
+        <div class="rel-panel">
+          <h4>Top 10 dias que mais venderam</h4>
+          ${data.topDias.map((d,i)=> relRow(i+1, `${d.data} (${d.dia})`, '', money(d.total), maxDia)).join('')}
+        </div>
+        <div class="rel-panel">
+          <h4>Vendas por período do dia</h4>
+          ${data.periodoDia.map((p,i)=> relRow(i+1, p.p, (p.pct*100).toFixed(0)+'%', money(p.valor), data.periodoDia[0].valor)).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function relRow(rank, name, sub, value, maxValue){
+  const pct = maxValue>0 ? Math.max(4, (value/maxValue)*100) : 0;
+  return `<div class="rel-row" style="flex-direction:column; align-items:stretch;">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <span class="rel-rank">${rank}</span>
+      <span class="rel-row-name">${name}</span>
+      ${sub ? `<span class="rel-row-sub">${sub}</span>` : ''}
+      <span class="rel-row-value">${value}</span>
+    </div>
+    <div class="rel-bar-track"><div class="rel-bar-fill" style="width:${pct}%;"></div></div>
+  </div>`;
+}
+
+function initRelatorio(){
+  buildPeriodos();
+  const el = document.getElementById('view-relatorio');
+  el.innerHTML = `
+    <div class="rel-controls">
+      <select class="rel-select" id="rel-periodo">
+        <option value="all">Todos os períodos</option>
+        ${PERIODOS.map(p=>`<option value="${p.sk}">${p.l}</option>`).join('')}
+      </select>
+      <div class="vend-tabs" id="rel-vend-tabs">
+        <div class="vend-tab active" data-vend="geral">Geral</div>
+      </div>
+    </div>
+    <div id="rel-body"></div>
+  `;
+  document.getElementById('rel-periodo').addEventListener('change', (e)=>{
+    currentPeriodo = e.target.value==='all' ? 'all' : parseInt(e.target.value);
+    renderRelatorioBody();
+  });
+  renderRelatorioBody();
+}
+
+async function renderRelatorioBody(){
+  const report = computeReport(currentPeriodo);
+  const bodyEl = document.getElementById('rel-body');
+
+  // monta abas de vendedora dinamicamente com base nos nomes encontrados nas vendas
+  const vendNames = report.vendedoras.map(v=>v[0]).filter(n=>n && !/bazaar/i.test(n)).slice(0,8);
+  const tabsEl = document.getElementById('rel-vend-tabs');
+  tabsEl.innerHTML = `<div class="vend-tab ${currentVendTab==='geral'?'active':''}" data-vend="geral">Geral</div>` +
+    vendNames.map(n=>`<div class="vend-tab ${currentVendTab===n?'active':''}" data-vend="${n}">${n}</div>`).join('');
+  tabsEl.querySelectorAll('.vend-tab').forEach(t=>{
+    t.addEventListener('click', ()=>{
+      currentVendTab = t.dataset.vend;
+      tabsEl.querySelectorAll('.vend-tab').forEach(x=>x.classList.toggle('active', x===t));
+      renderClientRanking(report);
+    });
+  });
+
+  const maxCat = report.categorias.length ? report.categorias[0][1] : 0;
+  const marcasPorValor = report.marcas.slice().sort((a,b)=>b[1].valor-a[1].valor).slice(0,10);
+  const marcasPorQtd = report.marcas.slice().sort((a,b)=>b[1].qtd-a[1].qtd).slice(0,10);
+  const produtosPorQtd = report.produtos.slice().sort((a,b)=>b[1].qtd-a[1].qtd).slice(0,10);
+  const produtosPorValor = report.produtos.slice().sort((a,b)=>b[1].valor-a[1].valor).slice(0,10);
+  const maxMarcaValor = marcasPorValor.length ? marcasPorValor[0][1].valor : 0;
+  const maxMarcaQtd = marcasPorQtd.length ? marcasPorQtd[0][1].qtd : 0;
+  const maxProdQtd = produtosPorQtd.length ? produtosPorQtd[0][1].qtd : 0;
+  const maxProdValor = produtosPorValor.length ? produtosPorValor[0][1].valor : 0;
+
+  bodyEl.innerHTML = `
+    <div class="rel-kpi-row">
+      <div class="rel-kpi"><b>${money(report.totalValor)}</b><span>Total vendido</span></div>
+      <div class="rel-kpi"><b>${report.totalQtd.toLocaleString('pt-BR')}</b><span>Itens vendidos</span></div>
+      <div class="rel-kpi"><b>${money(report.ticketMedio)}</b><span>Ticket médio</span></div>
+      <div class="rel-kpi"><b>${report.clientesAtivos.toLocaleString('pt-BR')}</b><span>Clientes que compraram</span></div>
+    </div>
+
+    <div class="rel-section" id="rel-meta-section"></div>
+
+    ${currentPeriodo!=='all' ? renderDiasHorariosSection(PERIODOS.find(p=>p.sk===currentPeriodo)?.l) : ''}
+
+    <div class="rel-section">
+      <div class="rel-section-title">Categorias mais vendidas</div>
+      <div class="rel-panel">
+        ${report.categorias.slice(0,10).map((c,i)=> relRow(i+1, c[0], '', money(c[1]), maxCat)).join('') || '<div class="empty-tab">Sem dados nesse período.</div>'}
+      </div>
+    </div>
+
+    <div class="rel-section">
+      <div class="rel-section-title">Marcas mais vendidas</div>
+      <div class="rel-grid-2">
+        <div class="rel-panel">
+          <h4>Por valor (R$)</h4>
+          ${marcasPorValor.map((m,i)=> relRow(i+1, m[0], m[1].qtd+' itens', money(m[1].valor), maxMarcaValor)).join('') || '<div class="empty-tab">Sem dados.</div>'}
+        </div>
+        <div class="rel-panel">
+          <h4>Por quantidade de itens</h4>
+          ${marcasPorQtd.map((m,i)=> relRow(i+1, m[0], money(m[1].valor), m[1].qtd+'x', maxMarcaQtd)).join('') || '<div class="empty-tab">Sem dados.</div>'}
+        </div>
+      </div>
+    </div>
+
+    <div class="rel-section">
+      <div class="rel-section-title">Produtos mais vendidos</div>
+      <div class="rel-grid-2">
+        <div class="rel-panel">
+          <h4>Por quantidade</h4>
+          ${produtosPorQtd.map((p,i)=> relRow(i+1, p[0], money(p[1].valor), p[1].qtd+'x', maxProdQtd)).join('') || '<div class="empty-tab">Sem dados.</div>'}
+        </div>
+        <div class="rel-panel">
+          <h4>Por valor (R$)</h4>
+          ${produtosPorValor.map((p,i)=> relRow(i+1, p[0], p[1].qtd+'x', money(p[1].valor), maxProdValor)).join('') || '<div class="empty-tab">Sem dados.</div>'}
+        </div>
+      </div>
+    </div>
+
+    <div class="rel-section">
+      <div class="rel-section-title">Ranking de clientes</div>
+      <div class="rel-panel" id="rel-ranking-panel"></div>
+    </div>
+  `;
+
+  renderClientRanking(report);
+  renderMetaSection(report, vendNames);
+}
+
+function renderClientRanking(report){
+  const panel = document.getElementById('rel-ranking-panel');
+  let rows;
+  if(currentVendTab==='geral'){
+    rows = report.clientRows.slice().sort((a,b)=>b.valor-a.valor).slice(0,15);
+  } else {
+    rows = report.clientRows.filter(c=>c.perVendedora[currentVendTab]>0)
+      .map(c=>({...c, valorVend: c.perVendedora[currentVendTab]}))
+      .sort((a,b)=>b.valorVend-a.valorVend).slice(0,15);
+  }
+  const maxV = rows.length ? (currentVendTab==='geral' ? rows[0].valor : rows[0].valorVend) : 0;
+  panel.innerHTML = rows.length ? rows.map((c,i)=>{
+    const val = currentVendTab==='geral' ? c.valor : c.valorVend;
+    const sub = currentVendTab==='geral' ? `${c.qtd} itens · ${c.catFav||'—'}` : `${c.qtd} itens`;
+    return relRow(i+1, c.nome, sub, money(val), maxV);
+  }).join('') : '<div class="empty-tab">Sem dados nesse período.</div>';
+}
+
+// ---------------- Meta x Realizado ----------------
+function periodoKey(){
+  if(currentPeriodo==='all') return null;
+  const p = PERIODOS.find(x=>x.sk===currentPeriodo);
+  return p ? p.l.replace('/','-') : null;
+}
+
+async function renderMetaSection(report, vendNames){
+  const sectionEl = document.getElementById('rel-meta-section');
+  const key = periodoKey();
+  if(!key){
+    sectionEl.innerHTML = `
+      <div class="rel-section-title">Meta x Realizado</div>
+      <div class="rel-panel"><div class="empty-tab" style="padding:14px 4px;">Selecione um mês específico (não "Todos os períodos") pra definir e ver a meta de cada vendedora.</div></div>
+    `;
+    return;
+  }
+  let metas = {};
+  try{
+    const snap = await getDoc(doc(db, 'metas', key));
+    if(snap.exists()) metas = snap.data();
+  }catch(e){ /* sem meta salva ainda */ }
+
+  const nomes = vendNames.length ? vendNames : Object.keys(metas);
+  const realizadoPorVend = {};
+  report.vendedoras.forEach(([n,v])=>{ realizadoPorVend[n]=v.valor; });
+
+  sectionEl.innerHTML = `
+    <div class="rel-section-title">Meta x Realizado — ${key.replace('-','/')}</div>
+    <div class="meta-card">
+      ${nomes.map(n=>{
+        const meta = metas[n] || 0;
+        const realizado = realizadoPorVend[n] || 0;
+        const pct = meta>0 ? (realizado/meta*100) : 0;
+        return `
+        <div class="meta-row">
+          <div class="meta-row-name">${n}</div>
+          <input type="number" class="meta-input" data-vend="${n}" placeholder="Meta R$" value="${meta||''}">
+          <div class="meta-bar-wrap">
+            <div class="rel-bar-track"><div class="rel-bar-fill" style="width:${Math.min(100,pct)}%;"></div></div>
+          </div>
+          <div style="font-size:12px; color:var(--ink-soft); min-width:150px; text-align:right;">
+            ${money(realizado)} ${meta>0 ? `<span class="meta-pct ${pct>=100?'ok':'bad'}">${pct.toFixed(0)}%</span>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+      <div style="display:flex; justify-content:flex-end; margin-top:12px;">
+        <button class="save-btn" id="save-metas-btn">Salvar metas</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('save-metas-btn').addEventListener('click', async ()=>{
+    const btn = document.getElementById('save-metas-btn');
+    btn.disabled = true; btn.textContent = 'Salvando...';
+    const newMetas = {};
+    sectionEl.querySelectorAll('.meta-input').forEach(inp=>{
+      const v = parseFloat(inp.value);
+      if(!isNaN(v) && v>0) newMetas[inp.dataset.vend] = v;
+    });
+    try{
+      await setDoc(doc(db, 'metas', key), newMetas);
+      showToast('Metas salvas');
+      renderMetaSection(report, vendNames);
+    }catch(e){
+      showToast('Erro ao salvar metas: '+e.message);
+    }
+    btn.disabled = false; btn.textContent = 'Salvar metas';
+  });
+}
 
 // =================================================================
 // IMPORTAÇÃO DE PLANILHA (Cliente / Vendas / Sucesso do cliente)

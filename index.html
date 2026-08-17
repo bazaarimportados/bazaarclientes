@@ -86,6 +86,64 @@
 
   #count-label{ font-size:12.5px; color:var(--ink-soft); margin: 4px 2px 12px; }
   #count-label b{ color:var(--wine-dark); }
+
+  /* ---------- Main nav (Clientes / Relatório) ---------- */
+  .main-nav{ display:flex; gap:6px; margin-bottom:18px; border-bottom:1px solid var(--line); }
+  .main-nav-tab{
+    padding:11px 4px; margin-right:22px; font-family:'Fraunces',serif; font-weight:600; font-size:15px;
+    color: var(--ink-soft); cursor:pointer; border-bottom:2px solid transparent; transition:.15s;
+  }
+  .main-nav-tab:hover{ color: var(--wine-dark); }
+  .main-nav-tab.active{ color: var(--wine-dark); border-bottom-color: var(--wine-dark); }
+
+  /* ---------- Relatório de Vendas ---------- */
+  .rel-controls{ display:flex; gap:10px; align-items:center; margin-bottom:22px; flex-wrap:wrap; }
+  .rel-select{
+    padding:10px 16px; border-radius:999px; border:1px solid var(--line); background:var(--paper);
+    font-size:13px; font-weight:600; color:var(--ink); outline:none; cursor:pointer;
+  }
+  .rel-kpi-row{ display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:12px; margin-bottom:26px; }
+  .rel-kpi{ background:var(--paper); border:1px solid var(--line); border-radius:14px; padding:16px 18px; }
+  .rel-kpi b{ display:block; font-family:'Fraunces',serif; font-size:22px; color:var(--wine-dark); font-weight:600; }
+  .rel-kpi span{ font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); }
+
+  .rel-section{ margin-bottom:30px; }
+  .rel-section-title{
+    font-family:'Fraunces',serif; font-size:16px; font-weight:600; color:var(--wine-dark);
+    margin:0 0 14px; display:flex; align-items:center; gap:8px;
+  }
+  .rel-section-title::after{ content:''; flex:1; height:1px; background:var(--line); }
+  .rel-grid-2{ display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+  .rel-panel{ background:var(--paper); border:1px solid var(--line); border-radius:14px; padding:18px 20px; }
+  .rel-panel h4{ font-family:'Fraunces',serif; font-size:13.5px; font-weight:600; color:var(--ink); margin:0 0 12px; }
+  .rel-row{
+    display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line-soft); font-size:13px;
+  }
+  .rel-row:last-child{ border-bottom:none; }
+  .rel-rank{
+    width:20px; height:20px; border-radius:50%; background:var(--wine-light); color:var(--wine-dark);
+    font-size:10.5px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .rel-row-name{ flex:1; color:var(--ink); font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .rel-row-sub{ font-size:11px; color:var(--ink-soft); flex-shrink:0; }
+  .rel-row-value{ font-family:'IBM Plex Mono',monospace; font-size:12.5px; font-weight:600; color:var(--wine-dark); flex-shrink:0; min-width:70px; text-align:right; }
+  .rel-bar-track{ height:6px; background:var(--line-soft); border-radius:99px; overflow:hidden; margin-top:4px; }
+  .rel-bar-fill{ height:100%; background:linear-gradient(90deg, var(--wine-soft), var(--wine-dark)); border-radius:99px; }
+
+  .vend-tabs{ display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
+  .vend-tab{ padding:7px 14px; border-radius:999px; border:1px solid var(--line); background:var(--paper); font-size:12px; font-weight:600; color:var(--ink-soft); cursor:pointer; }
+  .vend-tab.active{ background:var(--wine-dark); border-color:var(--wine-dark); color:#fff; }
+
+  .meta-card{ background:var(--paper); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:16px; }
+  .meta-row{ display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--line-soft); }
+  .meta-row:last-child{ border-bottom:none; }
+  .meta-row-name{ width:90px; font-weight:600; font-size:13px; color:var(--ink); flex-shrink:0; }
+  .meta-input{ width:110px; padding:7px 10px; border:1px solid var(--line); border-radius:8px; font-size:12.5px; outline:none; }
+  .meta-input:focus{ border-color:var(--wine-soft); box-shadow:0 0 0 3px var(--wine-light); }
+  .meta-bar-wrap{ flex:1; }
+  .meta-pct{ font-size:11.5px; font-weight:700; margin-left:8px; }
+  .meta-pct.ok{ color:var(--ok); }
+  .meta-pct.bad{ color:var(--alert); }
   .grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:12px; }
   .card{ background: var(--paper); border:1px solid var(--line); border-radius: var(--radius); padding:16px 16px 14px; cursor:pointer; transition: all .15s ease; position:relative; overflow:hidden; }
   .card:hover{ border-color: var(--wine-soft); box-shadow: var(--shadow); transform: translateY(-2px); }
@@ -257,6 +315,12 @@
     </div>
   </header>
 
+  <div class="main-nav">
+    <div class="main-nav-tab active" data-view="clientes">👥 Clientes</div>
+    <div class="main-nav-tab" data-view="relatorio">📊 Relatório de Vendas</div>
+  </div>
+
+  <div id="view-clientes">
   <div class="toolbar">
     <div class="search-wrap">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -279,6 +343,9 @@
 
   <p id="count-label"></p>
   <div class="grid" id="grid"></div>
+  </div>
+
+  <div id="view-relatorio" style="display:none;"></div>
 </div>
 
 <div class="scrim" id="scrim"></div>
