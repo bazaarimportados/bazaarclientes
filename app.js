@@ -546,7 +546,7 @@ document.querySelectorAll('.main-nav-tab').forEach(t=>{
 // RELATÓRIO DE VENDAS
 // =================================================================
 let PERIODOS = [];       // [{sk, l}] ordenado do mais recente pro mais antigo
-let currentPeriodo = 'all';
+let currentPeriodoFilter = { type: 'all' };
 let currentVendTab = 'geral';
 
 function buildPeriodos(){
@@ -555,7 +555,16 @@ function buildPeriodos(){
   PERIODOS = Object.entries(map).map(([sk,l])=>({sk:parseInt(sk), l})).sort((a,b)=>b.sk-a.sk);
 }
 
-function computeReport(periodoSk){
+function periodMatches(sk, filter){
+  const ano = Math.floor(sk/100), mes = sk%100;
+  if(filter.type==='all') return true;
+  if(filter.type==='month') return sk===filter.sk;
+  if(filter.type==='year') return ano===filter.ano;
+  if(filter.type==='quarter') return ano===filter.ano && Math.ceil(mes/3)===filter.q;
+  return false;
+}
+
+function computeReport(filter){
   const catTotals = {};
   const marcaTotals = {};
   const productTotals = {};
@@ -567,7 +576,7 @@ function computeReport(periodoSk){
     let cValor=0, cQtd=0;
     const cCat = {}, cVend = {};
     (c.historico_meses||[]).forEach(m=>{
-      if(periodoSk!=='all' && m.sk!==periodoSk) return;
+      if(!periodMatches(m.sk, filter)) return;
       m.it.forEach(p=>{
         totalValor += p.v; totalQtd++;
         cValor += p.v; cQtd++;
@@ -687,30 +696,91 @@ function relRow(rank, name, sub, value, maxValue){
   </div>`;
 }
 
+const QUARTER_LABEL = {1:'1º Trimestre (Jan-Mar)', 2:'2º Trimestre (Abr-Jun)', 3:'3º Trimestre (Jul-Set)', 4:'4º Trimestre (Out-Dez)'};
+
+function buildYearsQuarters(){
+  const years = [...new Set(PERIODOS.map(p=>Math.floor(p.sk/100)))].sort((a,b)=>b-a);
+  const quartersByYear = {};
+  PERIODOS.forEach(p=>{
+    const ano = Math.floor(p.sk/100), mes = p.sk%100;
+    const q = Math.ceil(mes/3);
+    quartersByYear[ano] = quartersByYear[ano] || new Set();
+    quartersByYear[ano].add(q);
+  });
+  return { years, quartersByYear };
+}
+
 function initRelatorio(){
   buildPeriodos();
+  const { years, quartersByYear } = buildYearsQuarters();
   const el = document.getElementById('view-relatorio');
   el.innerHTML = `
     <div class="rel-controls">
-      <select class="rel-select" id="rel-periodo">
-        <option value="all">Todos os períodos</option>
-        ${PERIODOS.map(p=>`<option value="${p.sk}">${p.l}</option>`).join('')}
+      <select class="rel-select" id="rel-tipo">
+        <option value="all">Geral (todo o período)</option>
+        <option value="month">Mensal</option>
+        <option value="quarter">Trimestral</option>
+        <option value="year">Anual</option>
       </select>
+      <select class="rel-select" id="rel-periodo-valor" style="display:none;"></select>
       <div class="vend-tabs" id="rel-vend-tabs">
         <div class="vend-tab active" data-vend="geral">Geral</div>
       </div>
     </div>
     <div id="rel-body"></div>
   `;
-  document.getElementById('rel-periodo').addEventListener('change', (e)=>{
-    currentPeriodo = e.target.value==='all' ? 'all' : parseInt(e.target.value);
+
+  const tipoSel = document.getElementById('rel-tipo');
+  const valorSel = document.getElementById('rel-periodo-valor');
+
+  function rebuildValorOptions(){
+    const tipo = tipoSel.value;
+    if(tipo==='all'){
+      valorSel.style.display = 'none';
+      currentPeriodoFilter = { type:'all' };
+      renderRelatorioBody();
+      return;
+    }
+    valorSel.style.display = 'inline-block';
+    if(tipo==='month'){
+      valorSel.innerHTML = PERIODOS.map(p=>`<option value="${p.sk}">${p.l}</option>`).join('');
+      currentPeriodoFilter = { type:'month', sk: PERIODOS[0].sk };
+    } else if(tipo==='quarter'){
+      const opts = [];
+      years.forEach(ano=>{
+        [...quartersByYear[ano]].sort((a,b)=>b-a).forEach(q=>{
+          opts.push(`<option value="${ano}-${q}">${QUARTER_LABEL[q]} ${ano}</option>`);
+        });
+      });
+      valorSel.innerHTML = opts.join('');
+      const [firstAno, firstQ] = valorSel.value.split('-').map(Number);
+      currentPeriodoFilter = { type:'quarter', ano:firstAno, q:firstQ };
+    } else if(tipo==='year'){
+      valorSel.innerHTML = years.map(a=>`<option value="${a}">${a}</option>`).join('');
+      currentPeriodoFilter = { type:'year', ano: years[0] };
+    }
+    renderRelatorioBody();
+  }
+
+  tipoSel.addEventListener('change', rebuildValorOptions);
+  valorSel.addEventListener('change', ()=>{
+    const tipo = tipoSel.value;
+    if(tipo==='month'){
+      currentPeriodoFilter = { type:'month', sk: parseInt(valorSel.value) };
+    } else if(tipo==='quarter'){
+      const [ano,q] = valorSel.value.split('-').map(Number);
+      currentPeriodoFilter = { type:'quarter', ano, q };
+    } else if(tipo==='year'){
+      currentPeriodoFilter = { type:'year', ano: parseInt(valorSel.value) };
+    }
     renderRelatorioBody();
   });
+
   renderRelatorioBody();
 }
 
 async function renderRelatorioBody(){
-  const report = computeReport(currentPeriodo);
+  const report = computeReport(currentPeriodoFilter);
   const bodyEl = document.getElementById('rel-body');
 
   // monta abas de vendedora dinamicamente com base nos nomes encontrados nas vendas
@@ -736,7 +806,17 @@ async function renderRelatorioBody(){
   const maxProdQtd = produtosPorQtd.length ? produtosPorQtd[0][1].qtd : 0;
   const maxProdValor = produtosPorValor.length ? produtosPorValor[0][1].valor : 0;
 
+  function currentPeriodoLabel(){
+    const f = currentPeriodoFilter;
+    if(f.type==='all') return 'Todo o período (2024–2026)';
+    if(f.type==='month') return PERIODOS.find(p=>p.sk===f.sk)?.l || '';
+    if(f.type==='quarter') return `${QUARTER_LABEL[f.q]} ${f.ano}`;
+    if(f.type==='year') return `Ano ${f.ano}`;
+    return '';
+  }
+
   bodyEl.innerHTML = `
+    <p style="font-size:12.5px; color:var(--ink-soft); margin:-8px 0 16px;">Mostrando: <b style="color:var(--wine-dark);">${currentPeriodoLabel()}</b></p>
     <div class="rel-kpi-row">
       <div class="rel-kpi"><b>${money(report.totalValor)}</b><span>Total vendido</span></div>
       <div class="rel-kpi"><b>${report.totalQtd.toLocaleString('pt-BR')}</b><span>Itens vendidos</span></div>
@@ -746,7 +826,7 @@ async function renderRelatorioBody(){
 
     <div class="rel-section" id="rel-meta-section"></div>
 
-    ${currentPeriodo!=='all' ? renderDiasHorariosSection(PERIODOS.find(p=>p.sk===currentPeriodo)?.l) : ''}
+    ${currentPeriodoFilter.type==='month' ? renderDiasHorariosSection(PERIODOS.find(p=>p.sk===currentPeriodoFilter.sk)?.l) : ''}
 
     <div class="rel-section">
       <div class="rel-section-title">Categorias mais vendidas</div>
@@ -813,8 +893,8 @@ function renderClientRanking(report){
 
 // ---------------- Meta x Realizado ----------------
 function periodoKey(){
-  if(currentPeriodo==='all') return null;
-  const p = PERIODOS.find(x=>x.sk===currentPeriodo);
+  if(currentPeriodoFilter.type!=='month') return null;
+  const p = PERIODOS.find(x=>x.sk===currentPeriodoFilter.sk);
   return p ? p.l.replace('/','-') : null;
 }
 
@@ -824,7 +904,7 @@ async function renderMetaSection(report, vendNames){
   if(!key){
     sectionEl.innerHTML = `
       <div class="rel-section-title">Meta x Realizado</div>
-      <div class="rel-panel"><div class="empty-tab" style="padding:14px 4px;">Selecione um mês específico (não "Todos os períodos") pra definir e ver a meta de cada vendedora.</div></div>
+      <div class="rel-panel"><div class="empty-tab" style="padding:14px 4px;">Meta só se aplica a um mês específico — troque o filtro acima pra "Mensal" e escolha o mês pra ver e editar a meta de cada vendedora.</div></div>
     `;
     return;
   }
