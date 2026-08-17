@@ -564,6 +564,11 @@ function periodMatches(sk, filter){
   return false;
 }
 
+function normVendKey(v){ return (v||'').trim().toUpperCase(); }
+function titleCaseName(v){
+  return (v||'').trim().toLowerCase().split(/\s+/).map(w=> w ? w.charAt(0).toUpperCase()+w.slice(1) : w).join(' ');
+}
+
 function computeReport(filter){
   const catTotals = {};
   const marcaTotals = {};
@@ -584,18 +589,20 @@ function computeReport(filter){
         if(p.mc){ marcaTotals[p.mc] = marcaTotals[p.mc] || {valor:0,qtd:0}; marcaTotals[p.mc].valor += p.v; marcaTotals[p.mc].qtd++; }
         productTotals[p.i] = productTotals[p.i] || {valor:0,qtd:0}; productTotals[p.i].valor += p.v; productTotals[p.i].qtd++;
         if(p.vd){
-          vendedoraTotals[p.vd] = vendedoraTotals[p.vd] || {valor:0,qtd:0};
-          vendedoraTotals[p.vd].valor += p.v; vendedoraTotals[p.vd].qtd++;
-          cVend[p.vd] = (cVend[p.vd]||0)+p.v;
+          const vk = normVendKey(p.vd);
+          vendedoraTotals[vk] = vendedoraTotals[vk] || {valor:0,qtd:0, display: titleCaseName(p.vd)};
+          vendedoraTotals[vk].valor += p.v; vendedoraTotals[vk].qtd++;
+          cVend[vk] = (cVend[vk]||0)+p.v;
         }
       });
     });
     if(cQtd>0){
       const catFavEntry = Object.entries(cCat).sort((a,b)=>b[1]-a[1])[0];
       const vendPrincEntry = Object.entries(cVend).sort((a,b)=>b[1]-a[1])[0];
+      const vendPrincDisplay = vendPrincEntry ? (vendedoraTotals[vendPrincEntry[0]]?.display || vendPrincEntry[0]) : '';
       clientRows.push({
         id:c.id, nome:c.nome, valor:cValor, qtd:cQtd,
-        catFav: catFavEntry ? catFavEntry[0] : '', vendPrincipal: vendPrincEntry ? vendPrincEntry[0] : '',
+        catFav: catFavEntry ? catFavEntry[0] : '', vendPrincipal: vendPrincDisplay,
         perVendedora: cVend
       });
     }
@@ -784,10 +791,10 @@ async function renderRelatorioBody(){
   const bodyEl = document.getElementById('rel-body');
 
   // monta abas de vendedora dinamicamente com base nos nomes encontrados nas vendas
-  const vendNames = report.vendedoras.map(v=>v[0]).filter(n=>n && !/bazaar/i.test(n)).slice(0,8);
+  const vendEntries = report.vendedoras.filter(([k,v])=> k && !/BAZAAR/i.test(k)).slice(0,8);
   const tabsEl = document.getElementById('rel-vend-tabs');
   tabsEl.innerHTML = `<div class="vend-tab ${currentVendTab==='geral'?'active':''}" data-vend="geral">Geral</div>` +
-    vendNames.map(n=>`<div class="vend-tab ${currentVendTab===n?'active':''}" data-vend="${n}">${n}</div>`).join('');
+    vendEntries.map(([k,v])=>`<div class="vend-tab ${currentVendTab===k?'active':''}" data-vend="${k}">${v.display}</div>`).join('');
   tabsEl.onclick = (e)=>{
     const t = e.target.closest('.vend-tab');
     if(!t || !tabsEl.contains(t)) return;
@@ -870,7 +877,7 @@ async function renderRelatorioBody(){
   `;
 
   renderClientRanking(report);
-  renderMetaSection(report, vendNames);
+  renderMetaSection(report, vendEntries);
 }
 
 function renderClientRanking(report){
@@ -898,7 +905,7 @@ function periodoKey(){
   return p ? p.l.replace('/','-') : null;
 }
 
-async function renderMetaSection(report, vendNames){
+async function renderMetaSection(report, vendEntries){
   const sectionEl = document.getElementById('rel-meta-section');
   const key = periodoKey();
   if(!key){
@@ -914,9 +921,9 @@ async function renderMetaSection(report, vendNames){
     if(snap.exists()) metas = snap.data();
   }catch(e){ /* sem meta salva ainda */ }
 
-  const nomes = vendNames.length ? vendNames : Object.keys(metas);
+  const nomes = vendEntries.length ? vendEntries.map(([k,v])=>v.display) : Object.keys(metas);
   const realizadoPorVend = {};
-  report.vendedoras.forEach(([n,v])=>{ realizadoPorVend[n]=v.valor; });
+  report.vendedoras.forEach(([k,v])=>{ realizadoPorVend[v.display] = (realizadoPorVend[v.display]||0) + v.valor; });
 
   sectionEl.innerHTML = `
     <div class="rel-section-title">Meta x Realizado — ${key.replace('-','/')}</div>
@@ -954,7 +961,7 @@ async function renderMetaSection(report, vendNames){
     try{
       await setDoc(doc(db, 'metas', key), newMetas);
       showToast('Metas salvas');
-      renderMetaSection(report, vendNames);
+      renderMetaSection(report, vendEntries);
     }catch(e){
       showToast('Erro ao salvar metas: '+e.message);
     }
