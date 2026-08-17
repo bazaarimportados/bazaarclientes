@@ -101,7 +101,7 @@ function statusBadgeClass(s){
   if(s==='PROBLEMA') return 'problema';
   return 'neutro';
 }
-function statusLabel(s){ if(!s || s.trim()==='') return 'Sem status'; return s.trim(); }
+function statusLabel(s){ if(!s || s.trim()==='') return 'Nunca comprou'; return s.trim(); }
 function phoneDigits(tel){
   if(!tel) return '';
   let d = tel.replace(/\D/g,'');
@@ -177,9 +177,8 @@ function renderGrid(){
 }
 
 function updateHeaderStats(){
-  document.getElementById('stat-total').textContent = CLIENTES.length.toLocaleString('pt-BR');
   const ativas = CLIENTES.filter(c=>(c.status||'').toUpperCase()==='ATIVA');
-  document.getElementById('stat-ativas').textContent = ativas.length.toLocaleString('pt-BR');
+  document.getElementById('stat-total').textContent = ativas.length.toLocaleString('pt-BR');
   const totalValor = CLIENTES.reduce((s,c)=>s+(c.total_gasto||0),0);
   document.getElementById('stat-valor').textContent = money(totalValor);
 }
@@ -285,25 +284,44 @@ function renderHistoricoTab(c){
       <div class="sum-card"><b>${c.qtd_compras}</b><span>Itens comprados</span></div>
       <div class="sum-card"><b>${c.ultima_compra || '—'}</b><span>Compra mais recente</span></div>
     </div>
-    ${meses.map(m=>`
-      <div class="month-group">
-        <div class="month-label">🗓️ ${m.l} <span style="margin-left:auto; color:var(--wine-dark); font-weight:700;">${money(m.sub)}</span></div>
-        ${m.it.slice().reverse().map(p=>`
-          <div class="purchase-item">
-            <div class="pi-left">
-              <div class="pi-name">${p.i}</div>
-              <div class="pi-meta">
-                ${p.cat ? `<span>${p.cat}</span>` : ''}
-                ${p.mc ? `<span>${p.mc}</span>` : ''}
-                ${p.vd ? `<span>${p.vd}</span>` : ''}
+    ${meses.map((m,idx)=>`
+      <div class="month-accordion">
+        <div class="month-header" data-idx="${idx}">
+          <span class="month-chevron">▸</span>
+          <span class="month-header-label">🗓️ ${m.l}</span>
+          <span class="month-header-count">${m.it.length} ${m.it.length===1?'item':'itens'}</span>
+          <span class="month-header-value">${money(m.sub)}</span>
+        </div>
+        <div class="month-items" id="month-items-${idx}" style="display:none;">
+          ${m.it.slice().reverse().map(p=>`
+            <div class="purchase-item">
+              <div class="pi-left">
+                <div class="pi-name">${p.i}</div>
+                <div class="pi-meta">
+                  ${p.cat ? `<span>${p.cat}</span>` : ''}
+                  ${p.mc ? `<span>${p.mc}</span>` : ''}
+                  ${p.vd ? `<span>${p.vd}</span>` : ''}
+                </div>
               </div>
+              <div class="pi-value">${money(p.v)}</div>
             </div>
-            <div class="pi-value">${money(p.v)}</div>
-          </div>
-        `).join('')}
+          `).join('')}
+        </div>
       </div>
     `).join('')}
   `;
+
+  el.querySelectorAll('.month-header').forEach(h=>{
+    h.addEventListener('click', ()=>{
+      const idx = h.dataset.idx;
+      const itemsEl = document.getElementById('month-items-'+idx);
+      const chevron = h.querySelector('.month-chevron');
+      const isOpen = itemsEl.style.display !== 'none';
+      itemsEl.style.display = isOpen ? 'none' : 'block';
+      chevron.textContent = isOpen ? '▸' : '▾';
+      h.classList.toggle('open', !isOpen);
+    });
+  });
 }
 
 function sucessoBadges(e){
