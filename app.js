@@ -690,6 +690,76 @@ function renderDiasHorariosSection(periodoLabel){
   `;
 }
 
+function computeClientProfile(){
+  const bairroCount = {};
+  CLIENTES.forEach(c=>{
+    const b = (c.bairro||'').trim();
+    if(b) bairroCount[b] = (bairroCount[b]||0)+1;
+  });
+  const bairros = Object.entries(bairroCount).sort((a,b)=>b[1]-a[1]);
+
+  const faixas = [[0,19],[20,24],[25,29],[30,34],[35,39],[40,44],[45,49],[50,59],[60,150]];
+  const faixaLabels = ['Até 19','20-24','25-29','30-34','35-39','40-44','45-49','50-59','60+'];
+  const faixaCount = new Array(faixas.length).fill(0);
+  let semIdade = 0;
+  CLIENTES.forEach(c=>{
+    if(typeof c.idade==='number' && c.idade>0 && c.idade<120){
+      const idx = faixas.findIndex(([lo,hi])=> c.idade>=lo && c.idade<=hi);
+      if(idx>=0) faixaCount[idx]++;
+    } else {
+      semIdade++;
+    }
+  });
+
+  const last6 = PERIODOS.slice(0,6);
+  let compraTodoMes = 0, gastaMilTodoMes = 0;
+  if(last6.length===6){
+    CLIENTES.forEach(c=>{
+      const mesesMap = {};
+      (c.historico_meses||[]).forEach(m=> mesesMap[m.sk]=m);
+      if(last6.every(p=> mesesMap[p.sk] && mesesMap[p.sk].it.length>0)) compraTodoMes++;
+      if(last6.every(p=> mesesMap[p.sk] && mesesMap[p.sk].sub>1000)) gastaMilTodoMes++;
+    });
+  }
+
+  return { bairros, faixaLabels, faixaCount, semIdade, last6, compraTodoMes, gastaMilTodoMes };
+}
+
+function renderPerfilBaseSection(){
+  const p = computeClientProfile();
+  const maxBairro = p.bairros.length ? p.bairros[0][1] : 0;
+  const maxFaixa = Math.max(...p.faixaCount, 1);
+  const periodoLabel6 = p.last6.length===6 ? `${p.last6[5].l} até ${p.last6[0].l}` : '';
+
+  return `
+    <div class="rel-section">
+      <div class="rel-section-title">Perfil da Base de Clientes</div>
+
+      <div class="rel-kpi-row" style="margin-bottom:16px;">
+        <div class="rel-kpi">
+          <b>${p.compraTodoMes.toLocaleString('pt-BR')}</b>
+          <span>Compraram todo mês${periodoLabel6 ? ` (${periodoLabel6})` : ' (últimos 6 meses)'}</span>
+        </div>
+        <div class="rel-kpi">
+          <b>${p.gastaMilTodoMes.toLocaleString('pt-BR')}</b>
+          <span>Gastaram +R$1.000 todo mês${periodoLabel6 ? ` (${periodoLabel6})` : ' (últimos 6 meses)'}</span>
+        </div>
+      </div>
+
+      <div class="rel-grid-2">
+        <div class="rel-panel">
+          <h4>Clientes por bairro (top 12)</h4>
+          ${p.bairros.slice(0,12).map(([b,n],i)=> relRow(i+1, b, '', n+' clientes', maxBairro)).join('') || '<div class="empty-tab">Sem bairro informado.</div>'}
+        </div>
+        <div class="rel-panel">
+          <h4>Clientes por faixa etária ${p.semIdade ? `<span style="font-weight:400; color:var(--ink-faint); font-size:11px;">(${p.semIdade} sem idade informada)</span>` : ''}</h4>
+          ${p.faixaLabels.map((l,i)=> relRow(i+1, l, '', p.faixaCount[i]+' clientes', maxFaixa)).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function relRow(rank, name, sub, value, maxValue){
   const pct = maxValue>0 ? Math.max(4, (value/maxValue)*100) : 0;
   return `<div class="rel-row" style="flex-direction:column; align-items:stretch;">
@@ -832,6 +902,8 @@ async function renderRelatorioBody(){
     </div>
 
     <div class="rel-section" id="rel-meta-section"></div>
+
+    ${renderPerfilBaseSection()}
 
     ${currentPeriodoFilter.type==='month' ? renderDiasHorariosSection(PERIODOS.find(p=>p.sk===currentPeriodoFilter.sk)?.l) : ''}
 
