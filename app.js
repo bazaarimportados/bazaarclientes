@@ -712,17 +712,41 @@ function computeClientProfile(){
   });
 
   const last6 = PERIODOS.slice(0,6);
-  let compraTodoMes = 0, gastaMilTodoMes = 0;
+  let compraTodoMesList = [], gastaMilTodoMesList = [];
   if(last6.length===6){
     CLIENTES.forEach(c=>{
       const mesesMap = {};
       (c.historico_meses||[]).forEach(m=> mesesMap[m.sk]=m);
-      if(last6.every(p=> mesesMap[p.sk] && mesesMap[p.sk].it.length>0)) compraTodoMes++;
-      if(last6.every(p=> mesesMap[p.sk] && mesesMap[p.sk].sub>1000)) gastaMilTodoMes++;
+      const totalPeriodo = last6.reduce((s,p)=> s + (mesesMap[p.sk]?.sub||0), 0);
+      if(last6.every(p=> mesesMap[p.sk] && mesesMap[p.sk].it.length>0)){
+        compraTodoMesList.push({id:c.id, nome:c.nome, valor:totalPeriodo});
+      }
+      if(last6.every(p=> mesesMap[p.sk] && mesesMap[p.sk].sub>1000)){
+        gastaMilTodoMesList.push({id:c.id, nome:c.nome, valor:totalPeriodo});
+      }
     });
+    compraTodoMesList.sort((a,b)=>b.valor-a.valor);
+    gastaMilTodoMesList.sort((a,b)=>b.valor-a.valor);
   }
 
-  return { bairros, faixaLabels, faixaCount, semIdade, last6, compraTodoMes, gastaMilTodoMes };
+  return { bairros, faixaLabels, faixaCount, semIdade, last6, compraTodoMesList, gastaMilTodoMesList };
+}
+
+function relListToggle(id, title, list){
+  if(!list.length) return '';
+  return `
+    <div style="margin-top:8px;">
+      <span class="obs-item-del" style="color:var(--wine-dark); font-weight:600;" id="toggle-${id}">Ver lista (${list.length}) ▾</span>
+      <div id="list-${id}" style="display:none; margin-top:10px; max-height:280px; overflow-y:auto;">
+        ${list.map((c,i)=>`
+          <div class="purchase-item">
+            <div class="pi-left"><div class="pi-name">${i+1}. ${c.nome}</div></div>
+            <div class="pi-value">${money(c.valor)}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
 }
 
 function renderPerfilBaseSection(){
@@ -735,21 +759,23 @@ function renderPerfilBaseSection(){
     <div class="rel-section">
       <div class="rel-section-title">Perfil da Base de Clientes</div>
 
-      <div class="rel-kpi-row" style="margin-bottom:16px;">
-        <div class="rel-kpi">
-          <b>${p.compraTodoMes.toLocaleString('pt-BR')}</b>
-          <span>Compraram todo mês${periodoLabel6 ? ` (${periodoLabel6})` : ' (últimos 6 meses)'}</span>
+      <div class="rel-grid-2" style="margin-bottom:16px;">
+        <div class="rel-panel">
+          <b style="font-family:'Fraunces',serif; font-size:22px; color:var(--wine-dark);">${p.compraTodoMesList.length.toLocaleString('pt-BR')}</b>
+          <div style="font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft);">Compraram todo mês${periodoLabel6 ? ` (${periodoLabel6})` : ''}</div>
+          ${relListToggle('compra-mes', 'Compraram todo mês', p.compraTodoMesList)}
         </div>
-        <div class="rel-kpi">
-          <b>${p.gastaMilTodoMes.toLocaleString('pt-BR')}</b>
-          <span>Gastaram +R$1.000 todo mês${periodoLabel6 ? ` (${periodoLabel6})` : ' (últimos 6 meses)'}</span>
+        <div class="rel-panel">
+          <b style="font-family:'Fraunces',serif; font-size:22px; color:var(--wine-dark);">${p.gastaMilTodoMesList.length.toLocaleString('pt-BR')}</b>
+          <div style="font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft);">Gastaram +R$1.000 todo mês${periodoLabel6 ? ` (${periodoLabel6})` : ''}</div>
+          ${relListToggle('gasta-mil', 'Gastaram +R$1000 todo mês', p.gastaMilTodoMesList)}
         </div>
       </div>
 
       <div class="rel-grid-2">
         <div class="rel-panel">
-          <h4>Clientes por bairro (top 12)</h4>
-          ${p.bairros.slice(0,12).map(([b,n],i)=> relRow(i+1, b, '', n+' clientes', maxBairro)).join('') || '<div class="empty-tab">Sem bairro informado.</div>'}
+          <h4>Clientes por bairro (top 12) — ${p.bairros.reduce((s,b)=>s+b[1],0)} com bairro informado</h4>
+          ${p.bairros.slice(0,12).map(([b,n],i)=> relRow(i+1, b, '', n+' clientes', maxBairro)).join('') || '<div class="empty-tab">Sem bairro informado na base.</div>'}
         </div>
         <div class="rel-panel">
           <h4>Clientes por faixa etária ${p.semIdade ? `<span style="font-weight:400; color:var(--ink-faint); font-size:11px;">(${p.semIdade} sem idade informada)</span>` : ''}</h4>
@@ -758,6 +784,19 @@ function renderPerfilBaseSection(){
       </div>
     </div>
   `;
+}
+
+function wireProfileToggles(){
+  ['compra-mes','gasta-mil'].forEach(id=>{
+    const t = document.getElementById('toggle-'+id);
+    if(!t) return;
+    t.addEventListener('click', ()=>{
+      const listEl = document.getElementById('list-'+id);
+      const open = listEl.style.display !== 'none';
+      listEl.style.display = open ? 'none' : 'block';
+      t.textContent = t.textContent.replace(open?'▴':'▾', open?'▾':'▴');
+    });
+  });
 }
 
 function relRow(rank, name, sub, value, maxValue){
@@ -950,6 +989,7 @@ async function renderRelatorioBody(){
 
   renderClientRanking(report);
   renderMetaSection(report, vendEntries);
+  wireProfileToggles();
 }
 
 function renderClientRanking(report){
